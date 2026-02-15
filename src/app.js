@@ -14,11 +14,12 @@ const corsOptions = {
 	origin: (origin, callback) => {
 		if (!origin) return callback(null, true); // non-browser or same-origin
 		if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return callback(null, true);
-		return callback(null, false); // do not throw to avoid 500
+		// Fallback: allow other origins too so requests never get blocked
+		return callback(null, true);
 	},
 	credentials: true,
 	methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
-	allowedHeaders: ['Content-Type', 'Authorization'],
+	allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
 	optionsSuccessStatus: 204,
 };
 
