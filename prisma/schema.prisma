@@ -1,0 +1,234 @@
+generator client {
+  provider        = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MANAGER
+  CASHIER
+  WAITER
+  KITCHEN
+}
+
+enum OrderStatus {
+  OPEN
+  SENT_TO_KITCHEN
+  PARTIAL_PAID
+  CLOSED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  PENDING
+  IN_PROGRESS
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum PaymentType {
+  CASH
+  CARD
+  QR
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+}
+
+model platform_admins {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  password   String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model customers {
+  id                  String    @id @default(uuid())
+  name                String
+  contact_email       String    @unique
+  is_active           Boolean   @default(true)
+  is_suspended        Boolean   @default(false)
+  subscription_start  DateTime?
+  subscription_end    DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime?
+  subscriptions       subscriptions[]
+  users               users[]
+  roles               roles[]
+  tables              tables[]
+  products            products[]
+  categories          categories[]
+  orders              orders[]
+  audit_logs          audit_logs[]
+}
+
+model subscriptions {
+  id           String   @id @default(uuid())
+  customer_id  String
+  plan_name    String?
+  start_date   DateTime
+  end_date     DateTime
+  is_active    Boolean  @default(true)
+  is_suspended Boolean  @default(false)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  customer customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+}
+
+model roles {
+  id          String   @id @default(uuid())
+  customer_id String
+  name        Role
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  customer customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  users     users[]
+}
+
+model users {
+  id             String   @id @default(uuid())
+  customer_id    String
+  role_id        String
+  email          String
+  password       String
+  refresh_token  String?
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  deleted_at     DateTime?
+
+  customer customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  role     roles     @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  orders   orders[]
+  audit_logs audit_logs[]
+
+  @@unique([email, customer_id])
+}
+
+model tables {
+  id          String    @id @default(uuid())
+  customer_id String
+  name        String
+  status      String    @default("OPEN")
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  customer customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  orders   orders[]
+}
+
+model categories {
+  id          String    @id @default(uuid())
+  customer_id String
+  name        String
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  customer customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  products  products[]
+}
+
+model products {
+  id          String    @id @default(uuid())
+  customer_id String
+  category_id String?
+  name        String
+  price       Decimal   @db.Decimal(10, 2)
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  customer   customers  @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  category   categories? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  order_items order_items[]
+
+  @@index([customer_id, category_id])
+}
+
+model orders {
+  id              String      @id @default(uuid())
+  customer_id     String
+  table_id        String?
+  user_id         String?
+  status          OrderStatus @default(OPEN)
+  note            String?
+  total_amount    Decimal     @db.Decimal(10, 2) @default(0.00)
+  discount_amount Decimal     @db.Decimal(10, 2) @default(0.00)
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+  deleted_at      DateTime?
+
+  customer  customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  table     tables?   @relation(fields: [table_id], references: [id], onDelete: SetNull)
+  user      users?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  items     order_items[]
+  payments  payments[]
+  audit_logs audit_logs[]
+
+  @@index([customer_id, status])
+}
+
+model order_items {
+  id             String          @id @default(uuid())
+  order_id       String
+  customer_id    String
+  product_id     String
+  product_name   String
+  product_price  Decimal         @db.Decimal(10, 2)
+  quantity       Int
+  status         OrderItemStatus @default(PENDING)
+  note           String?
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+  deleted_at     DateTime?
+
+  order   orders   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product products @relation(fields: [product_id], references: [id], onDelete: Restrict)
+
+  @@index([order_id])
+}
+
+model payments {
+  id          String      @id @default(uuid())
+  order_id    String
+  customer_id String
+  amount      Decimal     @db.Decimal(10, 2)
+  type        PaymentType
+  created_at  DateTime    @default(now())
+  updated_at  DateTime    @updatedAt
+
+  order orders @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id])
+}
+
+model audit_logs {
+  id          String      @id @default(uuid())
+  customer_id String
+  user_id     String?
+  order_id    String?
+  action      AuditAction
+  entity      String
+  entity_id   String
+  metadata    Json?
+  created_at  DateTime    @default(now())
+
+  customer customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  user     users?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  order    orders?   @relation(fields: [order_id], references: [id], onDelete: SetNull)
+}
